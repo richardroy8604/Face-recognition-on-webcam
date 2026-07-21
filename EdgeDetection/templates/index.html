@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Edge Detection Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Plus+Jakarta+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0b0f19;
+            --bg-secondary: rgba(17, 24, 39, 0.7);
+            --accent-glow: rgba(59, 130, 246, 0.15);
+            --accent-color: #3b82f6;
+            --accent-hover: #60a5fa;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --card-border: rgba(255, 255, 255, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(147, 51, 234, 0.08) 0px, transparent 50%);
+        }
+
+        header {
+            padding: 2rem 4rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--card-border);
+            backdrop-filter: blur(10px);
+            background: rgba(11, 15, 25, 0.5);
+            z-index: 10;
+        }
+
+        .logo {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(16, 185, 129, 0.1);
+            color: #10b981;
+            padding: 0.4rem 1rem;
+            border-radius: 9999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .status-badge.searching {
+            background: rgba(245, 158, 11, 0.1);
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+
+        .pulse {
+            width: 8px;
+            height: 8px;
+            background-color: #10b981;
+            border-radius: 50%;
+            animation: pulse-animation 1.5s infinite;
+        }
+
+        .status-badge.searching .pulse {
+            background-color: #f59e0b;
+        }
+
+        @keyframes pulse-animation {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            }
+        }
+
+        main {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 2rem;
+            padding: 2.5rem 4rem;
+            max-width: 1600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 2rem;
+            backdrop-filter: blur(16px);
+            display: flex;
+            flex-direction: column;
+            gap: 1.8rem;
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+            height: fit-content;
+        }
+
+        .panel-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-main);
+            border-bottom: 1px solid var(--card-border);
+            padding-bottom: 0.8rem;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        label span.value {
+            color: var(--accent-hover);
+            font-family: monospace;
+            font-size: 0.95rem;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 9999px;
+            outline: none;
+            transition: background 0.3s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            cursor: pointer;
+            transition: transform 0.1s, background-color 0.3s;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: var(--accent-hover);
+            transform: scale(1.15);
+        }
+
+        .toggle-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 1rem;
+            border-radius: 12px;
+            border: 1px solid var(--card-border);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            transition: .3s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--accent-color);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        .viewer-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-secondary);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 1.5rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+            position: relative;
+            min-height: 480px;
+        }
+
+        .video-wrapper {
+            width: 100%;
+            max-width: 640px;
+            aspect-ratio: 4/3;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+            background-color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .video-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .app-desc {
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            text-align: center;
+            line-height: 1.5;
+        }
+
+        footer {
+            padding: 1.5rem;
+            text-align: center;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.3);
+            border-top: 1px solid var(--card-border);
+            margin-top: auto;
+        }
+
+        /* Hidden video and canvas for capturing */
+        #hidden-video, #hidden-canvas {
+            display: none;
+        }
+
+        @media (max-width: 1024px) {
+            main {
+                grid-template-columns: 1fr;
+                padding: 1.5rem;
+            }
+            header {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">VisionEdge.io</div>
+        <div class="status-badge searching" id="status-badge">
+            <div class="pulse"></div> <span id="status-text">Requesting Camera...</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- Sidebar Controls -->
+        <div class="panel">
+            <h2 class="panel-title">Tuning Controls</h2>
+            
+            <!-- Gaussian Blur Kernel Size -->
+            <div class="control-group">
+                <label for="blur-kernel">
+                    Gaussian Blur Size
+                    <span class="value" id="blur-val">5x5</span>
+                </label>
+                <input type="range" id="blur-kernel" min="1" max="15" step="2" value="5">
+            </div>
+
+            <!-- Canny Lower Threshold -->
+            <div class="control-group">
+                <label for="canny-min">
+                    Canny Low Threshold
+                    <span class="value" id="min-val">50</span>
+                </label>
+                <input type="range" id="canny-min" min="0" max="255" step="1" value="50">
+            </div>
+
+            <!-- Canny Upper Threshold -->
+            <div class="control-group">
+                <label for="canny-max">
+                    Canny High Threshold
+                    <span class="value" id="max-val">150</span>
+                </label>
+                <input type="range" id="canny-max" min="0" max="255" step="1" value="150">
+            </div>
+
+            <!-- Invert Colors -->
+            <div class="toggle-container">
+                <span style="font-size: 0.9rem; font-weight: 500; color: var(--text-main);">Invert Output</span>
+                <label class="switch">
+                    <input type="checkbox" id="invert-toggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Video Stream Area -->
+        <div class="viewer-container">
+            <div class="video-wrapper">
+                <!-- Processed frame gets drawn here -->
+                <img class="video-feed" id="processed-output" alt="Processed Output Feed">
+            </div>
+            <p class="app-desc">
+                Capturing webcam stream locally from browser, running edge detection in python, and displaying processed frames. Fully compatible with remote hosting!
+            </p>
+        </div>
+    </main>
+
+    <!-- Hidden elements to handle camera stream processing -->
+    <video id="hidden-video" width="640" height="480" autoplay playsinline></video>
+    <canvas id="hidden-canvas" width="640" height="480"></canvas>
+
+    <footer>
+        Image Processing Assignment - Edge Detection Web Portal
+    </footer>
+
+    <script>
+        // DOM Elements
+        const blurSlider = document.getElementById('blur-kernel');
+        const minSlider = document.getElementById('canny-min');
+        const maxSlider = document.getElementById('canny-max');
+        const invertToggle = document.getElementById('invert-toggle');
+
+        const blurVal = document.getElementById('blur-val');
+        const minVal = document.getElementById('min-val');
+        const maxVal = document.getElementById('max-val');
+
+        const videoEl = document.getElementById('hidden-video');
+        const canvasEl = document.getElementById('hidden-canvas');
+        const ctx = canvasEl.getContext('2d');
+        const outputImg = document.getElementById('processed-output');
+        const statusBadge = document.getElementById('status-badge');
+        const statusText = document.getElementById('status-text');
+
+        // Parameter values cache
+        let params = {
+            blur_kernel: 5,
+            canny_min: 50,
+            canny_max: 150,
+            invert: false
+        };
+
+        function updateLabels() {
+            blurVal.textContent = `${blurSlider.value}x${blurSlider.value}`;
+            minVal.textContent = minSlider.value;
+            maxVal.textContent = maxSlider.value;
+            
+            params.blur_kernel = parseInt(blurSlider.value);
+            params.canny_min = parseInt(minSlider.value);
+            params.canny_max = parseInt(maxSlider.value);
+            params.invert = invertToggle.checked;
+        }
+
+        // Listen for slider changes
+        [blurSlider, minSlider, maxSlider].forEach(slider => {
+            slider.addEventListener('input', updateLabels);
+        });
+        invertToggle.addEventListener('change', updateLabels);
+        updateLabels();
+
+        // Initialize user webcam
+        async function startWebcam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480 }
+                });
+                videoEl.srcObject = stream;
+                
+                statusBadge.classList.remove('searching');
+                statusText.textContent = "Live Stream Active";
+                
+                // Start frame loop once video starts playing
+                videoEl.onloadedmetadata = () => {
+                    sendFramesLoop();
+                };
+            } catch (err) {
+                console.error("Error accessing webcam:", err);
+                statusText.textContent = "Camera Access Denied/Missing";
+                statusBadge.style.background = "rgba(239, 68, 68, 0.1)";
+                statusBadge.style.color = "#ef4444";
+                statusBadge.style.borderColor = "rgba(239, 68, 68, 0.2)";
+            }
+        }
+
+        // Loop to capture frame, post to server, display result, and request next
+        let processing = false;
+        async function sendFramesLoop() {
+            if (processing) return;
+            processing = true;
+
+            // Draw current video frame to hidden canvas
+            ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+
+            // Convert canvas content to blob and upload
+            canvasEl.toBlob(async (blob) => {
+                if (!blob) {
+                    processing = false;
+                    requestAnimationFrame(sendFramesLoop);
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('image', blob, 'frame.jpg');
+                formData.append('blur_kernel', params.blur_kernel);
+                formData.append('canny_min', params.canny_min);
+                formData.append('canny_max', params.canny_max);
+                formData.append('invert', params.invert);
+
+                try {
+                    const response = await fetch('/process_frame', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        const processedBlob = await response.blob();
+                        const oldUrl = outputImg.src;
+                        outputImg.src = URL.createObjectURL(processedBlob);
+                        if (oldUrl.startsWith('blob:')) {
+                            URL.revokeObjectURL(oldUrl); // Revoke older object url to prevent memory leak
+                        }
+                    }
+                } catch (err) {
+                    console.error("Frame processing error:", err);
+                } finally {
+                    processing = false;
+                    // Request next frame
+                    setTimeout(sendFramesLoop, 30); // ~30 fps cap
+                }
+            }, 'image/jpeg', 0.7); // compress to 70% quality for faster transfers
+        }
+
+        // Start webcam on load
+        window.addEventListener('DOMContentLoaded', startWebcam);
+    </script>
+</body>
+</html>
