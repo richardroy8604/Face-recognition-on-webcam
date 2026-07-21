@@ -1,3 +1,4 @@
+import os
 import cv2
 import av
 import numpy as np
@@ -80,12 +81,18 @@ COLOR_MAP = {
 }
 chosen_color = COLOR_MAP[box_color_choice]
 
-# Load Haar Cascade
-@st.cache_resource
-def load_cascade():
-    return cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+# Robust Haar Cascade loader with fallback
+CASCADE_FILE = os.path.join(os.path.dirname(__file__), "haarcascade_frontalface_default.xml")
+if not os.path.exists(CASCADE_FILE):
+    CASCADE_FILE = "haarcascade_frontalface_default.xml"
 
-face_cascade = load_cascade()
+if not os.path.exists(CASCADE_FILE):
+    if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
+        CASCADE_FILE = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
+    elif hasattr(cv2, 'haarcascades'):
+        CASCADE_FILE = os.path.join(cv2.haarcascades, "haarcascade_frontalface_default.xml")
+
+face_cascade = cv2.CascadeClassifier(CASCADE_FILE)
 
 # WebRTC Video Processor Class
 class FaceDetector(VideoProcessorBase):
