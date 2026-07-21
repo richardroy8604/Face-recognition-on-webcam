@@ -39,8 +39,15 @@ st.markdown("""
 st.markdown('<div class="main-header">👤 Real-Time Face Detection</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Image Processing Assignment • Powered by OpenCV & Streamlit</div>', unsafe_allow_html=True)
 
-# Load Haar Cascade Classifier (No st.cache_resource to prevent Streamlit C++ object inspection crashes)
+# Robust Haar Cascade Classifier initialization with OpenCV 4.x / 5.x fallbacks
 def load_face_cascade():
+    ClassifierClass = getattr(cv2, 'CascadeClassifier', None)
+    if ClassifierClass is None and hasattr(cv2, 'objdetect'):
+        ClassifierClass = getattr(cv2.objdetect, 'CascadeClassifier', None)
+
+    if ClassifierClass is None:
+        return None
+
     candidates = [
         "haarcascade_frontalface_default.xml",
         os.path.join(os.path.dirname(__file__), "haarcascade_frontalface_default.xml"),
@@ -50,7 +57,7 @@ def load_face_cascade():
     if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
         candidates.append(os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml"))
 
-    cascade = cv2.CascadeClassifier()
+    cascade = ClassifierClass()
     for path in candidates:
         if os.path.exists(path):
             if cascade.load(path):
@@ -113,7 +120,7 @@ class FaceDetector(VideoProcessorBase):
         img = frame.to_ndarray(format="bgr24")
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        if not face_cascade.empty():
+        if face_cascade is not None and hasattr(face_cascade, 'empty') and not face_cascade.empty():
             faces = face_cascade.detectMultiScale(
                 gray,
                 scaleFactor=self.scale_factor,
@@ -142,7 +149,7 @@ if mode == "📸 Camera Snapshot":
         bytes_data = img_file_buffer.getvalue()
         cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
         
-        if cv2_img is not None and not face_cascade.empty():
+        if cv2_img is not None and face_cascade is not None and hasattr(face_cascade, 'empty') and not face_cascade.empty():
             gray = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2GRAY)
             faces = face_cascade.detectMultiScale(
                 gray,
@@ -162,6 +169,8 @@ if mode == "📸 Camera Snapshot":
                 st.warning("No faces detected. Try adjusting Scale Factor or Min Neighbors in the sidebar.")
                 
             st.image(rgb_img, caption="Processed Face Detection Snapshot", use_column_width=True)
+        elif face_cascade is None or face_cascade.empty():
+            st.error("Cascade classifier failed to load.")
 
 elif mode == "📹 Live Webcam Stream":
     st.info("Click **START** below to grant webcam access and start real-time video detection.")
@@ -187,7 +196,7 @@ elif mode == "📁 Upload Image":
         bytes_data = uploaded_file.getvalue()
         cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
         
-        if cv2_img is not None and not face_cascade.empty():
+        if cv2_img is not None and face_cascade is not None and hasattr(face_cascade, 'empty') and not face_cascade.empty():
             gray = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2GRAY)
             faces = face_cascade.detectMultiScale(
                 gray,
@@ -207,3 +216,5 @@ elif mode == "📁 Upload Image":
                 st.warning("No faces detected in uploaded image.")
                 
             st.image(rgb_img, caption="Processed Image", use_column_width=True)
+        elif face_cascade is None or face_cascade.empty():
+            st.error("Cascade classifier failed to load.")

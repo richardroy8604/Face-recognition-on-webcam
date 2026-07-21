@@ -1,2 +1,2 @@
+opencv-python-headless<5.0.0
 streamlit-webrtc
-opencv-python-headless
