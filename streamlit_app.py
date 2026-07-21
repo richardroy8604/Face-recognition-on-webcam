@@ -20,25 +20,26 @@ RTC_CONFIGURATION = RTCConfiguration(
 
 # Helper to load cascade classifier safely across local and cloud environments
 def get_face_cascade():
-    # 1. Try bundled XML file in repo
-    local_path = os.path.join(os.path.dirname(__file__), "haarcascade_frontalface_default.xml")
-    if os.path.exists(local_path):
-        cascade = cv2.CascadeClassifier(local_path)
-        if not cascade.empty():
-            return cascade
-
-    # 2. Try OpenCV system data path
     try:
-        if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
-            sys_path = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
-            if os.path.exists(sys_path):
-                cascade = cv2.CascadeClassifier(sys_path)
-                if not cascade.empty():
+        if hasattr(cv2, 'CascadeClassifier'):
+            # 1. Try bundled XML file in repo
+            local_path = os.path.join(os.path.dirname(__file__), "haarcascade_frontalface_default.xml")
+            if os.path.exists(local_path):
+                cascade = cv2.CascadeClassifier(local_path)
+                if hasattr(cascade, 'empty') and not cascade.empty():
                     return cascade
-    except Exception:
-        pass
 
-    return cv2.CascadeClassifier()
+            # 2. Try OpenCV system data path
+            if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
+                sys_path = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
+                if os.path.exists(sys_path):
+                    cascade = cv2.CascadeClassifier(sys_path)
+                    if hasattr(cascade, 'empty') and not cascade.empty():
+                        return cascade
+    except Exception as e:
+        print(f"Cascade load exception: {e}")
+
+    return None
 
 
 st.title("🎥 Real-Time Image Processing Web App")
@@ -94,22 +95,28 @@ class FaceDetectionProcessor(VideoProcessorBase):
         self.min_neighbors = 5
         self.color = (0, 255, 0) # BGR: Green
         self.thickness = 2
-        self.face_cascade = get_face_cascade()
+        try:
+            self.face_cascade = get_face_cascade()
+        except Exception:
+            self.face_cascade = None
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         img = frame.to_ndarray(format="bgr24")
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
-        if not self.face_cascade.empty():
-            faces = self.face_cascade.detectMultiScale(
-                gray,
-                scaleFactor=self.scale_factor,
-                minNeighbors=self.min_neighbors,
-                minSize=(30, 30)
-            )
-            
-            for (x, y, w, h) in faces:
-                cv2.rectangle(img, (x, y), (x + w, y + h), self.color, self.thickness)
+        if self.face_cascade is not None and hasattr(self.face_cascade, 'detectMultiScale'):
+            try:
+                faces = self.face_cascade.detectMultiScale(
+                    gray,
+                    scaleFactor=self.scale_factor,
+                    minNeighbors=self.min_neighbors,
+                    minSize=(30, 30)
+                )
+                
+                for (x, y, w, h) in faces:
+                    cv2.rectangle(img, (x, y), (x + w, y + h), self.color, self.thickness)
+            except Exception as e:
+                print(f"Detection error: {e}")
             
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
@@ -245,7 +252,7 @@ elif app_mode == "Face Detection":
                 gray = cv2.cvtColor(processed_img, cv2.COLOR_RGB2GRAY)
                 face_cascade = get_face_cascade()
                 
-                if not face_cascade.empty():
+                if face_cascade is not None and not face_cascade.empty():
                     faces = face_cascade.detectMultiScale(
                         gray,
                         scaleFactor=scale_factor,
