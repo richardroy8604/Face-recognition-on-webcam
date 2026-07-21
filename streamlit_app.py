@@ -81,16 +81,37 @@ COLOR_MAP = {
 }
 chosen_color = COLOR_MAP[box_color_choice]
 
-# Robust Haar Cascade loader with fallback
-CASCADE_FILE = "haarcascade_frontalface_default.xml"
-if not os.path.exists(CASCADE_FILE):
-    # Fallback to cv2 data directory if available
+# Ultra-safe Haar Cascade initialization
+def get_face_cascade():
+    cascade = cv2.CascadeClassifier()
+    
+    # Candidate paths to locate XML file
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(base_dir, "haarcascade_frontalface_default.xml"),
+        os.path.join(base_dir, "facedetection", "haarcascade_frontalface_default.xml"),
+        "haarcascade_frontalface_default.xml",
+        "facedetection/haarcascade_frontalface_default.xml"
+    ]
+    
     if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
-        CASCADE_FILE = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
-    elif hasattr(cv2, 'haarcascades'):
-        CASCADE_FILE = os.path.join(cv2.haarcascades, "haarcascade_frontalface_default.xml")
+        candidates.append(os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml"))
 
-face_cascade = cv2.CascadeClassifier(CASCADE_FILE)
+    for path in candidates:
+        if os.path.exists(path):
+            if cascade.load(path):
+                return cascade
+
+    # Final fallback attempt
+    try:
+        if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
+            return cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    except Exception:
+        pass
+
+    return cascade
+
+face_cascade = get_face_cascade()
 
 # WebRTC Video Processor Class
 class FaceDetector(VideoProcessorBase):
@@ -104,15 +125,16 @@ class FaceDetector(VideoProcessorBase):
         img = frame.to_ndarray(format="bgr24")
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        faces = face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=self.scale_factor,
-            minNeighbors=self.min_neighbors,
-            minSize=(30, 30)
-        )
+        if not face_cascade.empty():
+            faces = face_cascade.detectMultiScale(
+                gray,
+                scaleFactor=self.scale_factor,
+                minNeighbors=self.min_neighbors,
+                minSize=(30, 30)
+            )
 
-        for (x, y, w, h) in faces:
-            cv2.rectangle(img, (x, y), (x + w, y + h), self.box_color, self.thickness)
+            for (x, y, w, h) in faces:
+                cv2.rectangle(img, (x, y), (x + w, y + h), self.box_color, self.thickness)
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
@@ -149,17 +171,20 @@ elif mode == "📸 Camera Snapshot":
         cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
         
         gray = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=scale_factor,
-            minNeighbors=min_neighbors,
-            minSize=(30, 30)
-        )
-        
-        for (x, y, w, h) in faces:
-            cv2.rectangle(cv2_img, (x, y), (x + w, y + h), chosen_color, thickness)
+        if not face_cascade.empty():
+            faces = face_cascade.detectMultiScale(
+                gray,
+                scaleFactor=scale_factor,
+                minNeighbors=min_neighbors,
+                minSize=(30, 30)
+            )
             
-        st.image(cv2.cvtColor(cv2_img, cv2.COLOR_BGR2RGB), caption=f"Detected {len(faces)} face(s)", use_container_width=True)
+            for (x, y, w, h) in faces:
+                cv2.rectangle(cv2_img, (x, y), (x + w, y + h), chosen_color, thickness)
+                
+            st.image(cv2.cvtColor(cv2_img, cv2.COLOR_BGR2RGB), caption=f"Detected {len(faces)} face(s)", use_container_width=True)
+        else:
+            st.error("Cascade classifier failed to load.")
 
 elif mode == "📁 Upload Image":
     uploaded_file = st.file_uploader("Upload an image file (JPG, PNG, JPEG)", type=["jpg", "jpeg", "png"])
@@ -169,14 +194,17 @@ elif mode == "📁 Upload Image":
         cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
         
         gray = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=scale_factor,
-            minNeighbors=min_neighbors,
-            minSize=(30, 30)
-        )
-        
-        for (x, y, w, h) in faces:
-            cv2.rectangle(cv2_img, (x, y), (x + w, y + h), chosen_color, thickness)
+        if not face_cascade.empty():
+            faces = face_cascade.detectMultiScale(
+                gray,
+                scaleFactor=scale_factor,
+                minNeighbors=min_neighbors,
+                minSize=(30, 30)
+            )
             
-        st.image(cv2.cvtColor(cv2_img, cv2.COLOR_BGR2RGB), caption=f"Detected {len(faces)} face(s)", use_container_width=True)
+            for (x, y, w, h) in faces:
+                cv2.rectangle(cv2_img, (x, y), (x + w, y + h), chosen_color, thickness)
+                
+            st.image(cv2.cvtColor(cv2_img, cv2.COLOR_BGR2RGB), caption=f"Detected {len(faces)} face(s)", use_container_width=True)
+        else:
+            st.error("Cascade classifier failed to load.")
