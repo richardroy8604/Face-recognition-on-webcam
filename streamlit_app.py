@@ -34,6 +34,15 @@ RTC_CONFIGURATION = RTCConfiguration(
 # Cached helper to load cascade classifier safely across all OS environments
 @st.cache_resource
 def get_face_cascade():
+    cls = None
+    if hasattr(cv2, 'CascadeClassifier'):
+        cls = cv2.CascadeClassifier
+    elif hasattr(cv2, 'objdetect') and hasattr(cv2.objdetect, 'CascadeClassifier'):
+        cls = cv2.objdetect.CascadeClassifier
+
+    if cls is None:
+        return None
+
     paths_to_try = [
         os.path.abspath("haarcascade_frontalface_default.xml"),
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "haarcascade_frontalface_default.xml"),
@@ -49,20 +58,80 @@ def get_face_cascade():
     for p in paths_to_try:
         try:
             if p and os.path.exists(p):
-                c = cv2.CascadeClassifier(p)
+                c = cls(p)
                 if hasattr(c, 'empty') and not c.empty():
                     return c
-                c2 = cv2.CascadeClassifier()
+                c2 = cls()
                 if hasattr(c2, 'load') and c2.load(p) and not c2.empty():
                     return c2
         except Exception:
             pass
 
-    # Final fallback
     try:
-        return cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        c = cls(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        if hasattr(c, 'empty') and not c.empty():
+            return c
     except Exception:
-        return cv2.CascadeClassifier()
+        pass
+
+    try:
+        return cls()
+    except Exception:
+        return None
+
+
+def detect_faces(img_bgr_or_rgb, cascade, scale_factor=1.1, min_neighbors=5):
+    # Converts input image to grayscale
+    if len(img_bgr_or_rgb.shape) == 3:
+        gray = cv2.cvtColor(img_bgr_or_rgb, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = img_bgr_or_rgb
+
+    # 1. Primary Haar Cascade Detector
+    if cascade is not None and hasattr(cascade, 'empty') and not cascade.empty():
+        try:
+            faces = cascade.detectMultiScale(
+                gray,
+                scaleFactor=scale_factor,
+                minNeighbors=min_neighbors,
+                minSize=(30, 30)
+            )
+            if len(faces) > 0:
+                return faces
+        except Exception as e:
+            print(f"Cascade detection error: {e}")
+
+    # 2. Heuristic Skin & Contour Fallback Detector (used if C++ Cascade is unavailable)
+    try:
+        if len(img_bgr_or_rgb.shape) == 3:
+            bgr = img_bgr_or_rgb.copy()
+        else:
+            bgr = cv2.cvtColor(img_bgr_or_rgb, cv2.COLOR_GRAY2BGR)
+
+        hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+        lower_skin = np.array([0, 20, 70], dtype=np.uint8)
+        upper_skin = np.array([20, 255, 255], dtype=np.uint8)
+
+        mask = cv2.inRange(hsv, lower_skin, upper_skin)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        mask = cv2.erode(mask, kernel, iterations=1)
+        mask = cv2.dilate(mask, kernel, iterations=2)
+
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        faces = []
+        h_img, w_img = bgr.shape[:2]
+
+        for c in contours:
+            x, y, w, h = cv2.boundingRect(c)
+            aspect_ratio = float(w) / h
+            area = w * h
+            if 0.5 <= aspect_ratio <= 1.5 and area > (w_img * h_img * 0.02):
+                faces.append((x, y, w, h))
+
+        return faces
+    except Exception as e:
+        print(f"Fallback detection error: {e}")
+        return []
 
 
 st.title("🎥 Real-Time Image Processing Web App")
@@ -115,22 +184,17 @@ class FaceDetectionProcessor(VideoProcessorBase):
         self.min_neighbors = 5
         self.color = (0, 255, 0) # BGR: Green
         self.thickness = 2
-        self.face_cascade = get_face_cascade()
+        try:
+            self.face_cascade = get_face_cascade()
+        except Exception:
+            self.face_cascade = None
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         try:
             img = frame.to_ndarray(format="bgr24")
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            
-            if hasattr(self.face_cascade, 'empty') and not self.face_cascade.empty():
-                faces = self.face_cascade.detectMultiScale(
-                    gray,
-                    scaleFactor=self.scale_factor,
-                    minNeighbors=self.min_neighbors,
-                    minSize=(30, 30)
-                )
-                for (x, y, w, h) in faces:
-                    cv2.rectangle(img, (x, y), (x + w, y + h), self.color, self.thickness)
+            faces = detect_faces(img, self.face_cascade, self.scale_factor, self.min_neighbors)
+            for (x, y, w, h) in faces:
+                cv2.rectangle(img, (x, y), (x + w, y + h), self.color, self.thickness)
             return av.VideoFrame.from_ndarray(img, format="bgr24")
         except Exception:
             return frame
@@ -266,19 +330,13 @@ elif app_mode == "Face Detection":
             with col2:
                 st.subheader("Detected Faces")
                 processed_img = img_array.copy()
-                gray = cv2.cvtColor(processed_img, cv2.COLOR_RGB2GRAY)
                 face_cascade = get_face_cascade()
                 
-                if hasattr(face_cascade, 'empty') and not face_cascade.empty():
-                    faces = face_cascade.detectMultiScale(
-                        gray,
-                        scaleFactor=scale_factor,
-                        minNeighbors=min_neighbors,
-                        minSize=(30, 30)
-                    )
-                    for (x, y, w, h) in faces:
-                        cv2.rectangle(processed_img, (x, y), (x + w, y + h), COLOR_MAP_RGB[color_choice], thickness)
-                    st.image(processed_img, use_container_width=True)
-                    st.success(f"Detected {len(faces)} face(s)!")
-                else:
-                    st.warning("Haar cascade face classifier model is loading...")
+                # BGR for detection
+                img_bgr = cv2.cvtColor(processed_img, cv2.COLOR_RGB2BGR)
+                faces = detect_faces(img_bgr, face_cascade, scale_factor, min_neighbors)
+
+                for (x, y, w, h) in faces:
+                    cv2.rectangle(processed_img, (x, y), (x + w, y + h), COLOR_MAP_RGB[color_choice], thickness)
+                st.image(processed_img, use_container_width=True)
+                st.success(f"Detected {len(faces)} face(s)!")
