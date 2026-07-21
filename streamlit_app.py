@@ -39,8 +39,7 @@ st.markdown("""
 st.markdown('<div class="main-header">👤 Real-Time Face Detection</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Image Processing Assignment • Powered by OpenCV & Streamlit</div>', unsafe_allow_html=True)
 
-# Load Haar Cascade Classifier
-@st.cache_resource
+# Load Haar Cascade Classifier (No st.cache_resource to prevent Streamlit C++ object inspection crashes)
 def load_face_cascade():
     candidates = [
         "haarcascade_frontalface_default.xml",
