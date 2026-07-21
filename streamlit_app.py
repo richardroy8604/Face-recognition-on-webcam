@@ -13,9 +13,22 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Free public STUN server configuration for cloud WebRTC streaming
+# Robust multi-STUN server configuration for cloud WebRTC streaming
 RTC_CONFIGURATION = RTCConfiguration(
-    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    {
+        "iceServers": [
+            {
+                "urls": [
+                    "stun:stun.l.google.com:19302",
+                    "stun:stun1.l.google.com:19302",
+                    "stun:stun2.l.google.com:19302",
+                    "stun:stun3.l.google.com:19302",
+                    "stun:stun4.l.google.com:19302",
+                    "stun:stun.services.mozilla.com"
+                ]
+            }
+        ]
+    }
 )
 
 # Helper to load cascade classifier safely across local and cloud environments
@@ -43,7 +56,7 @@ def get_face_cascade():
 
 
 st.title("🎥 Real-Time Image Processing Web App")
-st.markdown("Choose between **Edge Detection** and **Face Detection** in the sidebar. Supports **live video webcam streaming**!")
+st.markdown("Choose between **Edge Detection** and **Face Detection** in the sidebar.")
 
 # App selection
 app_mode = st.sidebar.selectbox(
@@ -54,7 +67,7 @@ app_mode = st.sidebar.selectbox(
 # Input method selection
 input_mode = st.sidebar.radio(
     "Select Input Mode",
-    ["Live Video (Webcam)", "Snapshot / File Upload"]
+    ["Camera Snapshot / File Upload", "Live Video (Webcam)"]
 )
 
 # ----------------- EDGE DETECTION PROCESSORS -----------------
@@ -66,27 +79,24 @@ class EdgeDetectionProcessor(VideoProcessorBase):
         self.invert = False
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
-        img = frame.to_ndarray(format="bgr24")
-
-        # Convert to grayscale
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        # Blur
-        k = self.blur_kernel
-        if k < 1: k = 1
-        if k % 2 == 0: k += 1
-        blur = cv2.GaussianBlur(gray, (k, k), 0)
-        
-        # Detect edges
-        edges = cv2.Canny(blur, self.canny_min, self.canny_max)
-        
-        if self.invert:
-            edges = cv2.bitwise_not(edges)
+        try:
+            img = frame.to_ndarray(format="bgr24")
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             
-        # Convert grayscale back to BGR format for WebRTC frame output
-        edges_bgr = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
-        
-        return av.VideoFrame.from_ndarray(edges_bgr, format="bgr24")
+            k = self.blur_kernel
+            if k < 1: k = 1
+            if k % 2 == 0: k += 1
+            blur = cv2.GaussianBlur(gray, (k, k), 0)
+            
+            edges = cv2.Canny(blur, self.canny_min, self.canny_max)
+            
+            if self.invert:
+                edges = cv2.bitwise_not(edges)
+                
+            edges_bgr = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+            return av.VideoFrame.from_ndarray(edges_bgr, format="bgr24")
+        except Exception:
+            return frame
 
 # ----------------- FACE DETECTION PROCESSORS -----------------
 class FaceDetectionProcessor(VideoProcessorBase):
@@ -101,24 +111,22 @@ class FaceDetectionProcessor(VideoProcessorBase):
             self.face_cascade = None
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
-        img = frame.to_ndarray(format="bgr24")
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        if self.face_cascade is not None and hasattr(self.face_cascade, 'detectMultiScale'):
-            try:
+        try:
+            img = frame.to_ndarray(format="bgr24")
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            
+            if self.face_cascade is not None and hasattr(self.face_cascade, 'detectMultiScale'):
                 faces = self.face_cascade.detectMultiScale(
                     gray,
                     scaleFactor=self.scale_factor,
                     minNeighbors=self.min_neighbors,
                     minSize=(30, 30)
                 )
-                
                 for (x, y, w, h) in faces:
                     cv2.rectangle(img, (x, y), (x + w, y + h), self.color, self.thickness)
-            except Exception as e:
-                print(f"Detection error: {e}")
-            
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
+            return av.VideoFrame.from_ndarray(img, format="bgr24")
+        except Exception:
+            return frame
 
 # Helper for static images
 def load_image(image_file):
@@ -130,8 +138,8 @@ def load_image(image_file):
 # EDGE DETECTION VIEW
 # =============================================================
 if app_mode == "Edge Detection":
-    st.header("⚡ Real-Time Edge Detection")
-    st.markdown("Adjust the sliders in the sidebar to modify edge detection parameters in real-time.")
+    st.header("⚡ Edge Detection")
+    st.markdown("Adjust parameters in the sidebar to process images/video.")
 
     st.sidebar.markdown("### 🎛️ Parameters")
     blur_kernel = st.sidebar.slider("Gaussian Blur Kernel Size", 1, 15, 5, step=2)
@@ -140,20 +148,22 @@ if app_mode == "Edge Detection":
     invert = st.sidebar.checkbox("Invert Colors", value=False)
 
     if input_mode == "Live Video (Webcam)":
-        st.info("Click **START** below to allow camera access and view real-time live edge detection.")
-        ctx = webrtc_streamer(
-            key="edge-detection-live",
-            video_processor_factory=EdgeDetectionProcessor,
-            rtc_configuration=RTC_CONFIGURATION,
-            media_stream_constraints={"video": True, "audio": False}
-        )
+        st.info("Click **START** below to grant camera access. *(Note: If WebRTC is blocked on your cloud network, switch to Camera Snapshot mode in sidebar)*.")
+        try:
+            ctx = webrtc_streamer(
+                key="edge-detection-live",
+                video_processor_factory=EdgeDetectionProcessor,
+                rtc_configuration=RTC_CONFIGURATION,
+                media_stream_constraints={"video": True, "audio": False}
+            )
 
-        # Update processor attributes dynamically as user moves sliders
-        if ctx.video_processor:
-            ctx.video_processor.blur_kernel = blur_kernel
-            ctx.video_processor.canny_min = canny_min
-            ctx.video_processor.canny_max = canny_max
-            ctx.video_processor.invert = invert
+            if ctx.video_processor:
+                ctx.video_processor.blur_kernel = blur_kernel
+                ctx.video_processor.canny_min = canny_min
+                ctx.video_processor.canny_max = canny_max
+                ctx.video_processor.invert = invert
+        except Exception as e:
+            st.error(f"Live WebRTC stream error: {e}. Please use 'Camera Snapshot / File Upload' mode.")
 
     else: # Snapshot / Upload
         source = st.radio("Choose Source", ["Camera Snapshot", "Upload Image File"])
@@ -188,8 +198,8 @@ if app_mode == "Edge Detection":
 # FACE DETECTION VIEW
 # =============================================================
 elif app_mode == "Face Detection":
-    st.header("🧑 Real-Time Face Detection")
-    st.markdown("Adjust parameters in the sidebar to detect faces live using OpenCV Haar Cascade Classifier.")
+    st.header("🧑 Face Detection")
+    st.markdown("Adjust parameters in the sidebar to detect faces.")
 
     st.sidebar.markdown("### 🎛️ Parameters")
     scale_factor = st.sidebar.slider("Scale Factor", 1.05, 1.50, 1.10, step=0.05)
@@ -197,14 +207,12 @@ elif app_mode == "Face Detection":
     color_choice = st.sidebar.selectbox("Box Color", ["Neon Green", "Electric Cyan", "Hot Pink", "Warm Amber"])
     thickness = st.sidebar.slider("Box Thickness", 1, 5, 2)
 
-    # Color mappings for OpenCV BGR
     COLOR_MAP_BGR = {
         "Neon Green": (0, 255, 0),
         "Electric Cyan": (255, 255, 0),
         "Hot Pink": (203, 192, 255),
         "Warm Amber": (0, 191, 255)
     }
-    # Color mappings for Streamlit RGB static display
     COLOR_MAP_RGB = {
         "Neon Green": (0, 255, 0),
         "Electric Cyan": (0, 255, 255),
@@ -213,20 +221,22 @@ elif app_mode == "Face Detection":
     }
 
     if input_mode == "Live Video (Webcam)":
-        st.info("Click **START** below to allow camera access and start real-time face tracking.")
-        ctx = webrtc_streamer(
-            key="face-detection-live",
-            video_processor_factory=FaceDetectionProcessor,
-            rtc_configuration=RTC_CONFIGURATION,
-            media_stream_constraints={"video": True, "audio": False}
-        )
+        st.info("Click **START** below to grant camera access. *(Note: If WebRTC is blocked on your cloud network, switch to Camera Snapshot mode in sidebar)*.")
+        try:
+            ctx = webrtc_streamer(
+                key="face-detection-live",
+                video_processor_factory=FaceDetectionProcessor,
+                rtc_configuration=RTC_CONFIGURATION,
+                media_stream_constraints={"video": True, "audio": False}
+            )
 
-        # Update processor attributes dynamically as user moves sliders
-        if ctx.video_processor:
-            ctx.video_processor.scale_factor = scale_factor
-            ctx.video_processor.min_neighbors = min_neighbors
-            ctx.video_processor.color = COLOR_MAP_BGR[color_choice]
-            ctx.video_processor.thickness = thickness
+            if ctx.video_processor:
+                ctx.video_processor.scale_factor = scale_factor
+                ctx.video_processor.min_neighbors = min_neighbors
+                ctx.video_processor.color = COLOR_MAP_BGR[color_choice]
+                ctx.video_processor.thickness = thickness
+        except Exception as e:
+            st.error(f"Live WebRTC stream error: {e}. Please use 'Camera Snapshot / File Upload' mode.")
 
     else: # Snapshot / Upload
         source = st.radio("Choose Source", ["Camera Snapshot", "Upload Image File"])
@@ -252,7 +262,7 @@ elif app_mode == "Face Detection":
                 gray = cv2.cvtColor(processed_img, cv2.COLOR_RGB2GRAY)
                 face_cascade = get_face_cascade()
                 
-                if face_cascade is not None and not face_cascade.empty():
+                if face_cascade is not None and hasattr(face_cascade, 'detectMultiScale'):
                     faces = face_cascade.detectMultiScale(
                         gray,
                         scaleFactor=scale_factor,
@@ -264,4 +274,4 @@ elif app_mode == "Face Detection":
                     st.image(processed_img, use_container_width=True)
                     st.success(f"Detected {len(faces)} face(s)!")
                 else:
-                    st.error("Could not load Haar cascade classifier.")
+                    st.warning("Haar cascade face classifier not loaded.")
