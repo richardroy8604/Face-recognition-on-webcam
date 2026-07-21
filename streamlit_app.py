@@ -31,28 +31,38 @@ RTC_CONFIGURATION = RTCConfiguration(
     }
 )
 
-# Helper to load cascade classifier safely across local and cloud environments
+# Cached helper to load cascade classifier safely across all OS environments
+@st.cache_resource
 def get_face_cascade():
+    paths_to_try = [
+        os.path.abspath("haarcascade_frontalface_default.xml"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "haarcascade_frontalface_default.xml"),
+        os.path.join(os.getcwd(), "haarcascade_frontalface_default.xml"),
+        "haarcascade_frontalface_default.xml",
+    ]
     try:
-        if hasattr(cv2, 'CascadeClassifier'):
-            # 1. Try bundled XML file in repo
-            local_path = os.path.join(os.path.dirname(__file__), "haarcascade_frontalface_default.xml")
-            if os.path.exists(local_path):
-                cascade = cv2.CascadeClassifier(local_path)
-                if hasattr(cascade, 'empty') and not cascade.empty():
-                    return cascade
+        if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
+            paths_to_try.append(os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml"))
+    except Exception:
+        pass
 
-            # 2. Try OpenCV system data path
-            if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
-                sys_path = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
-                if os.path.exists(sys_path):
-                    cascade = cv2.CascadeClassifier(sys_path)
-                    if hasattr(cascade, 'empty') and not cascade.empty():
-                        return cascade
-    except Exception as e:
-        print(f"Cascade load exception: {e}")
+    for p in paths_to_try:
+        try:
+            if p and os.path.exists(p):
+                c = cv2.CascadeClassifier(p)
+                if hasattr(c, 'empty') and not c.empty():
+                    return c
+                c2 = cv2.CascadeClassifier()
+                if hasattr(c2, 'load') and c2.load(p) and not c2.empty():
+                    return c2
+        except Exception:
+            pass
 
-    return None
+    # Final fallback
+    try:
+        return cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    except Exception:
+        return cv2.CascadeClassifier()
 
 
 st.title("🎥 Real-Time Image Processing Web App")
@@ -105,17 +115,14 @@ class FaceDetectionProcessor(VideoProcessorBase):
         self.min_neighbors = 5
         self.color = (0, 255, 0) # BGR: Green
         self.thickness = 2
-        try:
-            self.face_cascade = get_face_cascade()
-        except Exception:
-            self.face_cascade = None
+        self.face_cascade = get_face_cascade()
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         try:
             img = frame.to_ndarray(format="bgr24")
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             
-            if self.face_cascade is not None and hasattr(self.face_cascade, 'detectMultiScale'):
+            if hasattr(self.face_cascade, 'empty') and not self.face_cascade.empty():
                 faces = self.face_cascade.detectMultiScale(
                     gray,
                     scaleFactor=self.scale_factor,
@@ -262,7 +269,7 @@ elif app_mode == "Face Detection":
                 gray = cv2.cvtColor(processed_img, cv2.COLOR_RGB2GRAY)
                 face_cascade = get_face_cascade()
                 
-                if face_cascade is not None and hasattr(face_cascade, 'detectMultiScale'):
+                if hasattr(face_cascade, 'empty') and not face_cascade.empty():
                     faces = face_cascade.detectMultiScale(
                         gray,
                         scaleFactor=scale_factor,
@@ -274,4 +281,4 @@ elif app_mode == "Face Detection":
                     st.image(processed_img, use_container_width=True)
                     st.success(f"Detected {len(faces)} face(s)!")
                 else:
-                    st.warning("Haar cascade face classifier not loaded.")
+                    st.warning("Haar cascade face classifier model is loading...")
