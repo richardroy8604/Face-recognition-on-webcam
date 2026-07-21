@@ -83,32 +83,35 @@ chosen_color = COLOR_MAP[box_color_choice]
 
 # Ultra-safe Haar Cascade initialization
 def get_face_cascade():
-    cascade = cv2.CascadeClassifier()
-    
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(base_dir)
-    candidates = [
-        os.path.join(base_dir, "haarcascade_frontalface_default.xml"),
-        os.path.join(parent_dir, "haarcascade_frontalface_default.xml"),
-        "haarcascade_frontalface_default.xml",
-        "facedetection/haarcascade_frontalface_default.xml"
-    ]
-    
-    if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
-        candidates.append(os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml"))
-
-    for path in candidates:
-        if os.path.exists(path):
-            if cascade.load(path):
-                return cascade
-
+    if not hasattr(cv2, 'CascadeClassifier'):
+        st.warning("⚠️ OpenCV CascadeClassifier attribute not found. Ensure Python 3.11 is selected in Streamlit Cloud settings.")
+        return None
+        
     try:
+        cascade = cv2.CascadeClassifier()
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(base_dir)
+        candidates = [
+            os.path.join(base_dir, "haarcascade_frontalface_default.xml"),
+            os.path.join(parent_dir, "haarcascade_frontalface_default.xml"),
+            "haarcascade_frontalface_default.xml",
+            "facedetection/haarcascade_frontalface_default.xml"
+        ]
+        
+        if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
+            candidates.append(os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml"))
+
+        for path in candidates:
+            if os.path.exists(path):
+                if cascade.load(path):
+                    return cascade
+
         if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
             return cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-    except Exception:
-        pass
-
-    return cascade
+    except Exception as e:
+        st.warning(f"Warning loading CascadeClassifier: {e}")
+        
+    return None
 
 face_cascade = get_face_cascade()
 
@@ -124,7 +127,7 @@ class FaceDetector(VideoProcessorBase):
         img = frame.to_ndarray(format="bgr24")
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        if not face_cascade.empty():
+        if face_cascade is not None and not face_cascade.empty():
             faces = face_cascade.detectMultiScale(
                 gray,
                 scaleFactor=self.scale_factor,
@@ -170,7 +173,7 @@ elif mode == "📸 Camera Snapshot":
         cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
         
         gray = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2GRAY)
-        if not face_cascade.empty():
+        if face_cascade is not None and not face_cascade.empty():
             faces = face_cascade.detectMultiScale(
                 gray,
                 scaleFactor=scale_factor,
@@ -193,7 +196,7 @@ elif mode == "📁 Upload Image":
         cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
         
         gray = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2GRAY)
-        if not face_cascade.empty():
+        if face_cascade is not None and not face_cascade.empty():
             faces = face_cascade.detectMultiScale(
                 gray,
                 scaleFactor=scale_factor,
